@@ -75,8 +75,8 @@ unsigned long ultimaLectura = 0;
 // 1301-2500 Seca
 // 2501-4095 Demasiado Seca
 const char* clasificarSuelo(int adc) {
-  if (adc <= 700) return "Demasiado Húmeda";
-  if (adc <= 1000) return "Húmeda";
+  if (adc <= 900) return "Demasiado Húmeda";
+  if (adc <= 1200) return "Húmeda";
   if (adc <= 1500) return "Neutro";
   if (adc <= 2500) return "Seca";
   return "Demasiado Seca";
