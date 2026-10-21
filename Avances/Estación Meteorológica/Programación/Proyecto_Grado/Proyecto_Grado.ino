@@ -76,8 +76,8 @@ unsigned long ultimaLectura = 0;
 // 2501-4095 Demasiado Seca
 const char* clasificarSuelo(int adc) {
   if (adc <= 700) return "Demasiado Húmeda";
-  if (adc <= 900) return "Húmeda";
-  if (adc <= 1300) return "Neutro";
+  if (adc <= 1000) return "Húmeda";
+  if (adc <= 1500) return "Neutro";
   if (adc <= 2500) return "Seca";
   return "Demasiado Seca";
 }
@@ -382,7 +382,7 @@ textoTemp.style.color = colorTexto;
   const coloresSuelo = {
     "Demasiado Húmeda": ["#1D4ED8", "#FFFFFF"],
     "Húmeda":          ["#BFDBFE", "#1E3A8A"],
-    "Neutro":          ["#DCFCE7", "#166534"],
+    "Neutra":          ["#DCFCE7", "#166534"],
     "Seca":            ["#FEF3C7", "#92400E"],
     "Demasiado Seca":  ["#FEE2E2", "#991B1B"]
   };
