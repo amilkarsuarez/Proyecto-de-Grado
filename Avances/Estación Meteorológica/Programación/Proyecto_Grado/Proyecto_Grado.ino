@@ -6,14 +6,10 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <RtcDS1302.h>
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
 
 // =====================================
 // ESTACION METEOROLOGICA ECOMUNDO
-// SENSORES Y SINCRONIZACION AUTOMATICA DEL RTC POR WIFI
+// SENSORES, WIFI Y RTC AUTOMATICO
 // =====================================
 
 // PINES
@@ -35,7 +31,6 @@ const char* password = "12345678";
 
 WebServer server(80);
 bool wifiOK = false;
-bool bluetoothOK = false;
 
 // DHT11
 DHT dht(DHT_PIN, DHT11);
@@ -53,20 +48,6 @@ RtcDS1302<ThreeWire> rtc(rtcWire);
 
 bool rtcOK = false;
 
-// BLUETOOTH BLE
-#define SERVICE_UUID "12345678-1234-1234-1234-123456789abc"
-
-#define UUID_AMBIENTE "abcdefab-1234-1234-1234-abcdefabcdef"
-#define UUID_SENSORES "abcdefab-1234-1234-1234-abcdefabcde1"
-#define UUID_RELOJ "abcdefab-1234-1234-1234-abcdefabcde2"
-
-BLECharacteristic* bleAmbiente = nullptr;
-BLECharacteristic* bleSensores = nullptr;
-BLECharacteristic* bleReloj = nullptr;
-
-volatile bool bleConectado = false;
-volatile bool reiniciarBLE = false;
-
 // DATOS
 float temperatura = NAN;
 float humedadAire = NAN;
@@ -82,18 +63,37 @@ bool sistemaOK = false;
 const unsigned long INTERVALO = 3000;
 unsigned long ultimaLectura = 0;
 
+// =====================================
+// CLASIFICACIONES DE LOS SENSORES
+// =====================================
+
+// Escala operativa de humedad del suelo. Los limites no
+// se corresponden aun con porcentajes de humedad reales:
+// 0-700    Demasiado Humeda
+// 701-900  Humeda
+// 901-1300 Neutro
+// 1301-2500 Seca
+// 2501-4095 Demasiado Seca
+const char* clasificarSuelo(int adc) {
+  if (adc <= 700) return "Demasiado Húmeda";
+  if (adc <= 900) return "Húmeda";
+  if (adc <= 1300) return "Neutro";
+  if (adc <= 2500) return "Seca";
+  return "Demasiado Seca";
+}
+
 const char* clasificarLuz(int adc) {
 
-  if (adc >= 3300) {
+  if (adc >= 3000) {
     return "Demasiado oscuro";
   }
-  else if (adc >= 2300) {
+  else if (adc >= 1900) {
     return "Oscuro";
   }
   else if (adc >= 600) {
     return "Óptimo";
   }
-  else if (adc >= 350) {
+  else if (adc >= 250) {
     return "Iluminado";
   }
   else {
@@ -164,10 +164,9 @@ Humedad ambiental
 <div class="valor" id="aire">--</div>
 </div>
 
-<div class="tarjeta">
+<div class="tarjeta" id="tarjetaSuelo">
 Humedad del suelo
 <div class="valor" id="suelo">--</div>
-<small>Valor ADC sin calibrar</small>
 </div>
 
 <div class="tarjeta" id="tarjetaLuz">
@@ -376,8 +375,23 @@ textoTemp.style.color = colorTexto;
   tarjetaHumedad.style.color = textoColorHumedad;
   textoHumedad.style.color = textoColorHumedad;
 
-  document.getElementById("suelo").textContent =
-    d.suelo_adc;
+  // HUMEDAD DEL SUELO: solo mostrar la categoria, nunca el ADC.
+  const nivelSuelo = d.nivel_suelo;
+  const tarjetaSuelo = document.getElementById("tarjetaSuelo");
+  const textoSuelo = document.getElementById("suelo");
+  const coloresSuelo = {
+    "Demasiado Húmeda": ["#1D4ED8", "#FFFFFF"],
+    "Húmeda":          ["#BFDBFE", "#1E3A8A"],
+    "Neutro":          ["#DCFCE7", "#166534"],
+    "Seca":            ["#FEF3C7", "#92400E"],
+    "Demasiado Seca":  ["#FEE2E2", "#991B1B"]
+  };
+
+  const estiloSuelo = coloresSuelo[nivelSuelo] || ["#F3F4F6", "#6B7280"];
+  textoSuelo.textContent = nivelSuelo || "SIN LECTURA";
+  tarjetaSuelo.style.backgroundColor = estiloSuelo[0];
+  tarjetaSuelo.style.color = estiloSuelo[1];
+  textoSuelo.style.color = estiloSuelo[1];
 
   
 const nivel = d.nivel_luz;
@@ -427,29 +441,10 @@ setInterval(sincronizarRTC, 10 * 60 * 1000);
 </html>
 )rawliteral";
 
-// =====================================
-// BLUETOOTH
-// =====================================
-
-class ConexionBLE : public BLEServerCallbacks {
-
-  void onConnect(BLEServer* servidor) override {
-    bleConectado = true;
-    Serial.println("Bluetooth conectado");
-  }
-
-  void onDisconnect(BLEServer* servidor) override {
-    bleConectado = false;
-    reiniciarBLE = true;
-    Serial.println("Bluetooth desconectado");
-  }
-};
-
 // Declaraciones para usar estas funciones desde las rutas HTTP.
 void leerRTC();
 void actualizarEstado();
 void mostrarOLED();
-void actualizarBLE();
 
 // Validacion de fecha recibida por el navegador.
 bool fechaRecibidaValida(int anio, int mes, int dia,
@@ -514,15 +509,14 @@ void iniciarWiFi() {
     json += isnan(humedadAire)
       ? "null" : String(humedadAire, 1);
 
-    json += ",\"suelo_adc\":";
-    json += String(sueloADC);
+    // El servidor entrega categorias, sin valores ADC.
+    json += ",\"nivel_suelo\":\"";
+    json += clasificarSuelo(sueloADC);
+    json += "\"";
 
-    json += ",\"luz_adc\":";
-    json += String(luzADC);
-    
-json += ",\"nivel_luz\":\"";
-json += clasificarLuz(luzADC);
-json += "\"";
+    json += ",\"nivel_luz\":\"";
+    json += clasificarLuz(luzADC);
+    json += "\"";
 
 
     json += ",\"fecha_hora\":\"";
@@ -580,11 +574,10 @@ json += "\"";
       rtc.SetIsRunning(true);
     }
 
-    // Refrescar inmediatamente pantalla, BLE y estado del sistema.
+    // Refrescar inmediatamente pantalla y estado del sistema.
     leerRTC();
     actualizarEstado();
     mostrarOLED();
-    actualizarBLE();
 
     if (!rtcOK) {
       server.send(500, "application/json",
@@ -604,65 +597,6 @@ json += "\"";
   });
 
   server.begin();
-}
-
-// =====================================
-// INICIAR BLUETOOTH
-// BASADO EN TU CODIGO FUNCIONAL
-// =====================================
-
-void iniciarBluetooth() {
-
-  BLEDevice::init("ESP32_Ecomundo_BLE");
-
-  BLEServer* servidorBLE =
-    BLEDevice::createServer();
-
-  servidorBLE->setCallbacks(
-    new ConexionBLE()
-  );
-
-  BLEService* servicio =
-    servidorBLE->createService(SERVICE_UUID);
-
-  bleAmbiente = servicio->createCharacteristic(
-    UUID_AMBIENTE,
-    BLECharacteristic::PROPERTY_READ |
-    BLECharacteristic::PROPERTY_NOTIFY
-  );
-
-  bleSensores = servicio->createCharacteristic(
-    UUID_SENSORES,
-    BLECharacteristic::PROPERTY_READ |
-    BLECharacteristic::PROPERTY_NOTIFY
-  );
-
-  bleReloj = servicio->createCharacteristic(
-    UUID_RELOJ,
-    BLECharacteristic::PROPERTY_READ |
-    BLECharacteristic::PROPERTY_NOTIFY
-  );
-
-  bleAmbiente->addDescriptor(new BLE2902());
-  bleSensores->addDescriptor(new BLE2902());
-  bleReloj->addDescriptor(new BLE2902());
-
-  bleAmbiente->setValue("SIN DATOS");
-  bleSensores->setValue("SIN DATOS");
-  bleReloj->setValue("SIN HORA");
-
-  servicio->start();
-
-  BLEAdvertising* publicidad =
-    BLEDevice::getAdvertising();
-
-  publicidad->addServiceUUID(SERVICE_UUID);
-
-  BLEDevice::startAdvertising();
-
-  bluetoothOK = true;
-
-  Serial.println("BLUETOOTH ACTIVADO");
 }
 
 // =====================================
@@ -832,36 +766,31 @@ void mostrarOLED() {
 );
 
   oled.setCursor(0, 8);
-  oled.print("Temp: ");
+  oled.print("T:");
   if (isnan(temperatura)) oled.print("ERROR");
   else oled.print(temperatura, 1);
+  oled.print("C  HR:");
+  if (isnan(humedadAire)) oled.print("ERROR");
+  else oled.print(humedadAire, 1);
+  oled.print("%");
 
   oled.setCursor(0, 16);
-  oled.print("Hum aire: ");
-  if (isnan(humedadAire)) oled.print("ERROR");
-  else {
-    oled.print(humedadAire, 1);
-    oled.print("%");
-  }
+  oled.print("Suelo:");
 
   oled.setCursor(0, 24);
-  oled.print("Suelo ADC: ");
-  oled.print(sueloADC);
+  String estadoSuelo = clasificarSuelo(sueloADC);
+  // Fuente OLED basica: quitar caracteres acentuados.
+  estadoSuelo.replace("ú", "u");
+  estadoSuelo.replace("Ú", "U");
+  oled.print(estadoSuelo);
 
- 
-oled.setCursor(0, 32);
-oled.print("Luminosidad:");
+  oled.setCursor(0, 32);
+  oled.print("Luminosidad:");
 
-oled.setCursor(0, 40);
-
-String estadoLuz = clasificarLuz(luzADC);
-
-// La fuente integrada de la OLED no
-// representa correctamente las tildes.
-estadoLuz.replace("Ó", "O");
-
-oled.print(estadoLuz);
-
+  oled.setCursor(0, 40);
+  String estadoLuz = clasificarLuz(luzADC);
+  estadoLuz.replace("Ó", "O");
+  oled.print(estadoLuz);
 
   oled.setCursor(0, 48);
 
@@ -881,35 +810,6 @@ oled.print(estadoLuz);
 }
 
 // =====================================
-// ENVIAR DATOS POR BLUETOOTH
-// =====================================
-
-void actualizarBLE() {
-
-  String t = isnan(temperatura)
-    ? "ERR" : String(temperatura, 1);
-
-  String h = isnan(humedadAire)
-    ? "ERR" : String(humedadAire, 0);
-
-  String ambiente = "T:" + t + " H:" + h;
-
-  String sensores =
-    "S:" + String(sueloADC) +
-    " L:" + String(luzADC);
-
-  bleAmbiente->setValue(ambiente);
-  bleSensores->setValue(sensores);
-  bleReloj->setValue(String(fechaHora));
-
-  if (bleConectado) {
-    bleAmbiente->notify();
-    bleSensores->notify();
-    bleReloj->notify();
-  }
-}
-
-// =====================================
 // COMPROBAR ESTADO Y CONTROLAR LED
 // =====================================
 
@@ -925,7 +825,6 @@ void actualizarEstado() {
 
   sistemaOK =
     wifiOK &&
-    bluetoothOK &&
     oledResponde &&
     rtcOK &&
     dhtOK;
@@ -953,7 +852,6 @@ void leerSensores() {
   actualizarEstado();
 
   mostrarOLED();
-  actualizarBLE();
 
   Serial.println("----------------------");
 
@@ -963,8 +861,12 @@ void leerSensores() {
   Serial.print("Humedad aire: ");
   Serial.println(humedadAire);
 
-  Serial.print("Suelo ADC: ");
+  // El ADC se conserva unicamente en el Monitor serie
+  // para calibracion. No se envia a la pagina web.
+  Serial.print("Suelo ADC (calibracion): ");
   Serial.println(sueloADC);
+  Serial.print("Estado del suelo: ");
+  Serial.println(clasificarSuelo(sueloADC));
 
   Serial.print("Luminosidad: ");
   Serial.println(clasificarLuz(luzADC));
@@ -997,10 +899,8 @@ void setup() {
   Serial.println("ESTACION ECOMUNDO");
   Serial.println("Iniciando sistema");
 
-  // PRIMERO LAS COMUNICACIONES
-  // MISMO ORDEN DEL CODIGO QUE FUNCIONO
+  // CONEXION WIFI BASADA EN EL CODIGO YA PROBADO
   iniciarWiFi();
-  iniciarBluetooth();
 
   // LUEGO LOS COMPONENTES
   pinMode(SUELO_PIN, INPUT);
@@ -1029,11 +929,6 @@ void setup() {
 void loop() {
 
   server.handleClient();
-
-  if (reiniciarBLE) {
-    reiniciarBLE = false;
-    BLEDevice::startAdvertising();
-  }
 
   if (millis() - ultimaLectura >= INTERVALO) {
 
