@@ -1,26 +1,29 @@
 
-#define LED_PIN 2
+#include <WiFi.h>
 
 void setup() {
   Serial.begin(115200);
+  delay(1500);
 
-  pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, LOW);
+  Serial.println("PRUEBA DE WIFI ESP32");
 
-  Serial.println("PRUEBA DE LED ESP32");
-  Serial.println("Iniciando parpadeo...");
+  Serial.print("Memoria disponible: ");
+  Serial.println(ESP.getFreeHeap());
+
+  Serial.println("Iniciando WiFi STA...");
+  Serial.flush();
+
+  WiFi.mode(WIFI_STA);
+
+  Serial.println("WIFI STA INICIADO CORRECTAMENTE");
+  Serial.flush();
+
+  Serial.print("Direccion MAC: ");
+  Serial.println(WiFi.macAddress());
+
+  Serial.println("PRUEBA FINALIZADA");
 }
 
 void loop() {
-
-  // ENCENDER LED
-  digitalWrite(LED_PIN, HIGH);
-  Serial.println("LED ENCENDIDO");
   delay(1000);
-
-  // APAGAR LED
-  digitalWrite(LED_PIN, LOW);
-  Serial.println("LED APAGADO");
-  delay(1000);
-
 }
