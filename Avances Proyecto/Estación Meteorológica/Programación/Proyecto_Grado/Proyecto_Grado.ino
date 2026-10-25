@@ -10,10 +10,7 @@
 
 // =====================================
 // ESTACION METEOROLOGICA ECOMUNDO
-// SENSORES, LM35, WIFI Y RTC AUTOMATICO - SIN BLUETOOTH
-// LM35: 5 V regulados, VOUT GPIO36/VP, GND comun.
-// Los umbrales son de vigilancia de la CAJA, NO de cada componente.
-// LM35 no sustituye un termistor pegado a la bateria ni una proteccion termica.
+// SENSORES, WIFI Y RTC AUTOMATICO
 // =====================================
 
 // PINES
@@ -21,7 +18,6 @@
 #define DHT_PIN 27
 #define SUELO_PIN 34
 #define LDR_PIN 35
-#define LM35_PIN 36       // GPIO36 / VP: ADC1, solo entrada
 
 #define SDA_OLED 21
 #define SCL_OLED 22
@@ -56,8 +52,6 @@ bool rtcOK = false;
 // DATOS
 float temperatura = NAN;
 float humedadAire = NAN;
-float temperaturaInterna = NAN;  // LM35 dentro de la caja electrónica
-bool alertaTermica = false;
 
 int sueloADC = 0;
 int luzADC = 0;
@@ -163,46 +157,17 @@ body {
   color: #176b46;
 }
 
-/* Salud del sistema y LM35, uno al lado del otro */
-.estado-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 8px;
-  align-items: start;
-}
-
-.estado-celda {
-  min-width: 0;
-  padding: 4px;
-}
-
-.estado-celda + .estado-celda {
-  border-left: 1px solid #dce9df;
-  padding-left: 12px;
-}
-
 .estado-titulo {
-  font-size: 13px;
+  font-size: 14px;
   color: #526a5c;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   font-weight: 600;
 }
 
 .estado-valor {
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 800;
   overflow-wrap: anywhere;
-}
-
-.temp-interna {
-  font-size: 23px;
-  font-weight: 800;
-}
-
-.nivel-interno {
-  font-size: 12px;
-  margin-top: 5px;
-  font-weight: 700;
 }
 
 #estadoSincronizacion {
@@ -240,17 +205,8 @@ Humedad del suelo
 </div>
 
 <div class="tarjeta" id="tarjetaEstado">
-  <div class="estado-grid">
-    <div class="estado-celda">
-      <div class="estado-titulo">Estado del sistema</div>
-      <div class="estado-valor" id="estado">--</div>
-    </div>
-    <div class="estado-celda">
-      <div class="estado-titulo">Temperatura interna</div>
-      <div class="temp-interna" id="tempInterna">--</div>
-      <div class="nivel-interno" id="nivelInterno">Sin lectura</div>
-    </div>
-  </div>
+  <div class="estado-titulo">Estado del sistema</div>
+  <div class="estado-valor" id="estado">--</div>
 </div>
 
 <!-- Fecha/hora intencionalmente al final de la pagina -->
@@ -494,59 +450,14 @@ document.getElementById("luz").style.color = estilo[1];
   document.getElementById("fecha").textContent =
     d.fecha_hora;
 
-  // LM35: mostrar los °C y colorear SOLO las letras (no el fondo).
-  // RANGOS DE VIGILANCIA PARA CAJA ELECTRONICA, NO LIMITES
-  // UNIVERSALES DE LOS COMPONENTES NI MEDICION DE LA BATERIA.
-  const interna = d.temperatura_interna;
-  const tempInterna = document.getElementById("tempInterna");
-  const nivelInterno = document.getElementById("nivelInterno");
-  let colorTermico = "#6B7280";
-  let etiquetaTermica = "Sensor no disponible";
-
-  if (interna === null || !Number.isFinite(interna)) {
-    tempInterna.textContent = "SIN LECTURA";
-  } else {
-    const ti = Number(interna);
-    tempInterna.textContent = ti.toFixed(1) + " °C";
-
-    if (ti < 35) {
-      colorTermico = "#15803D"; // verde
-      etiquetaTermica = "Normal";
-    } else if (ti < 40) {
-      colorTermico = "#4D7C0F"; // verde lima
-      etiquetaTermica = "Vigilancia";
-    } else if (ti < 45) {
-      colorTermico = "#B45309"; // ambar
-      etiquetaTermica = "Precaución";
-    } else if (ti < 50) {
-      colorTermico = "#C2410C"; // naranja
-      etiquetaTermica = "Alerta térmica";
-    } else {
-      colorTermico = "#B91C1C"; // rojo
-      etiquetaTermica = "Temperatura crítica";
-    }
-  }
-
-  tempInterna.style.color = colorTermico;
-  nivelInterno.style.color = colorTermico;
-  nivelInterno.textContent = etiquetaTermica;
-
   const estadoSistema = document.getElementById("estado");
-  if (d.alerta_termica) {
-    estadoSistema.textContent = "ALERTA TÉRMICA";
-    estadoSistema.style.color = "#B91C1C";
-  } else {
-    estadoSistema.textContent = d.sistema_ok ? "OPERATIVO" : "REVISAR";
-    estadoSistema.style.color = d.sistema_ok ? "#15803D" : "#B91C1C";
-  }
+  estadoSistema.textContent = d.sistema_ok ? "OPERATIVO" : "REVISAR";
+  estadoSistema.style.color = d.sistema_ok ? "#15803D" : "#B91C1C";
 
  } catch(e) {
   enlaceInterrumpido = true;
   document.getElementById("estado").textContent = "SIN CONEXIÓN";
   document.getElementById("estado").style.color = "#B91C1C";
-  document.getElementById("tempInterna").textContent = "--";
-  document.getElementById("nivelInterno").textContent = "Sin conexión";
-  document.getElementById("nivelInterno").style.color = "#6B7280";
  }
 }
 
@@ -629,14 +540,6 @@ void iniciarWiFi() {
     json += ",\"humedad_aire\":";
     json += isnan(humedadAire)
       ? "null" : String(humedadAire, 1);
-
-    // LM35: temperatura en grados Celsius, no ADC bruto.
-    json += ",\"temperatura_interna\":";
-    json += isnan(temperaturaInterna)
-      ? "null" : String(temperaturaInterna, 1);
-
-    json += ",\"alerta_termica\":";
-    json += alertaTermica ? "true" : "false";
 
     // El servidor entrega categorias, sin valores ADC.
     json += ",\"nivel_suelo\":\"";
@@ -847,43 +750,6 @@ int leerADC(int pin) {
 }
 
 // =====================================
-// SENSOR LM35: TEMPERATURA DE LA CAJA
-// =====================================
-// El LM35 necesita 5 V, no alimentarlo desde 3V3.
-// Su salida es 10 mV por grado Celsius.
-// analogReadMilliVolts() usa la calibracion disponible del ADC.
-float leerLM35() {
-  const int muestras = 20;
-  uint32_t sumaMilivoltios = 0;
-
-  // Descartar una lectura despues de cambiar de canal ADC.
-  (void)analogReadMilliVolts(LM35_PIN);
-
-  for (int i = 0; i < muestras; i++) {
-    sumaMilivoltios += analogReadMilliVolts(LM35_PIN);
-    delay(2);
-  }
-
-  float milivoltios = (float)sumaMilivoltios / muestras;
-// DIAGNOSTICO DEL SENSOR LM35
-Serial.print("LM35 - Voltaje: ");
-Serial.print(milivoltios, 1);
-Serial.println(" mV");
-
-Serial.print("LM35 - Temperatura calculada: ");
-Serial.print(milivoltios / 10.0f, 1);
-Serial.println(" C");
-  // Valores casi cero o cercanos al limite ADC pueden indicar
-  // circuito abierto, mal cableado o un rango no medible.
-  // No son prueba definitiva de desconexion del sensor.
-  if (milivoltios < 100.0f || milivoltios > 920.0f) {
-    return NAN;
-  }
-
-  return milivoltios / 10.0f;
-}
-
-// =====================================
 // FECHA Y HORA
 // =====================================
 
@@ -989,21 +855,12 @@ void actualizarEstado() {
     !isnan(temperatura) &&
     !isnan(humedadAire);
 
-  bool lm35OK = !isnan(temperaturaInterna);
-  // Usar una décima (igual que el servidor web), para que la
-  // clasificación visible y el LED no difieran por redondeo.
-  float internaMostrada = roundf(temperaturaInterna * 10.0f) / 10.0f;
-  alertaTermica = lm35OK && (internaMostrada >= 45.0f);
-
-  // El LED se apaga por fallo de LM35 o alerta termica.
-  // IMPORTANTE: esto es SOLO un aviso, NO desconecta la bateria.
+  // Estado operativo basado en los dispositivos comprobables por software.
   sistemaOK =
     wifiOK &&
     oledResponde &&
     rtcOK &&
-    dhtOK &&
-    lm35OK &&
-    !alertaTermica;
+    dhtOK;
 
   // LED AUTOMATICO
   digitalWrite(
@@ -1023,7 +880,6 @@ void leerSensores() {
 
   sueloADC = leerADC(SUELO_PIN);
   luzADC = leerADC(LDR_PIN);
-  temperaturaInterna = leerLM35();
 
   leerRTC();
   actualizarEstado();
@@ -1037,11 +893,6 @@ void leerSensores() {
 
   Serial.print("Humedad aire: ");
   Serial.println(humedadAire);
-
-  Serial.print("LM35 - temperatura interna: ");
-  if (isnan(temperaturaInterna)) Serial.println("SIN LECTURA");
-  else { Serial.print(temperaturaInterna, 1); Serial.println(" C"); }
-  if (alertaTermica) Serial.println("AVISO: ALERTA TERMICA DE LA CAJA");
 
   // El ADC se conserva unicamente en el Monitor serie
   // para calibracion. No se envia a la pagina web.
@@ -1087,14 +938,8 @@ void setup() {
   // LUEGO LOS COMPONENTES
   pinMode(SUELO_PIN, INPUT);
   pinMode(LDR_PIN, INPUT);
-  pinMode(LM35_PIN, INPUT);
 
   analogReadResolution(12);
-  // Mejorar la medicion del LM35 en GPIO36
-analogSetPinAttenuation(LM35_PIN, ADC_0db);
-  // El LM35 suele entregar 200-600 mV en una caja de electronica.
-  // Atenuacion ADC de 0 dB: mayor resolucion en ese intervalo.
-  analogSetPinAttenuation(LM35_PIN, ADC_0db);
 
   dht.begin();
 
