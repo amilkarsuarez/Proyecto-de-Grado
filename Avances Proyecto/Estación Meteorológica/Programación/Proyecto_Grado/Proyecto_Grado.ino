@@ -865,7 +865,14 @@ float leerLM35() {
   }
 
   float milivoltios = (float)sumaMilivoltios / muestras;
+// DIAGNOSTICO DEL SENSOR LM35
+Serial.print("LM35 - Voltaje: ");
+Serial.print(milivoltios, 1);
+Serial.println(" mV");
 
+Serial.print("LM35 - Temperatura calculada: ");
+Serial.print(milivoltios / 10.0f, 1);
+Serial.println(" C");
   // Valores casi cero o cercanos al limite ADC pueden indicar
   // circuito abierto, mal cableado o un rango no medible.
   // No son prueba definitiva de desconexion del sensor.
