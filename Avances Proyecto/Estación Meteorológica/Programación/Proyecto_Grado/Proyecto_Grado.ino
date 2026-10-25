@@ -1090,6 +1090,8 @@ void setup() {
   pinMode(LM35_PIN, INPUT);
 
   analogReadResolution(12);
+  // Mejorar la medicion del LM35 en GPIO36
+analogSetPinAttenuation(LM35_PIN, ADC_0db);
   // El LM35 suele entregar 200-600 mV en una caja de electronica.
   // Atenuacion ADC de 0 dB: mayor resolucion en ese intervalo.
   analogSetPinAttenuation(LM35_PIN, ADC_0db);
