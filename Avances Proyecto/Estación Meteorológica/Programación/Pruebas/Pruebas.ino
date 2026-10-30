@@ -1,9 +1,9 @@
 
 
 #define LED_PIN 2
-#define LEDa 26
+#define LEDa 25
 #define LEDb 26
-#define LEDc 32
+#define LEDc 15
 #define Buz 32
 
 void setup() {
