@@ -33,13 +33,13 @@
 #include <esp_sleep.h>
 
 // ---------- CONFIGURACION USUARIO --------------------------------------
-const char* WIFI_SSID = "NOMBRE_WIFI_COLEGIO";
-const char* WIFI_CLAVE = "CLAVE_WIFI_COLEGIO";
+const char* WIFI_SSID = "FSUAMOR_INTERNAT";
+const char* WIFI_CLAVE = "11121FSM";
 
 // Adafruit IO: crear cuenta en https://io.adafruit.com
 // Sustituir estos dos valores para habilitar el panel remoto seguro TLS.
-#define IO_USERNAME "USUARIO_AQUI"
-#define IO_KEY      "CLAVE_AIO_AQUI"
+#define IO_USERNAME "AmilkarSM"
+#define IO_KEY      "Okm0Ijn9Uhb8"
 
 // Para las pruebas, la electroválvula NO se activa físicamente.
 // Cambiar a true SOLO tras comprobar cableado, 12 V bajo carga,
